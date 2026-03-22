@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import { _initTestDatabase, createTodo, getTodoByNotionId, getRouterState, setRouterState } from './db.js';
+import {
+  _initTestDatabase,
+  createTodo,
+  getTodoByNotionId,
+  getRouterState,
+  setRouterState,
+} from './db.js';
 import { runIncrementalSync, runFullSync } from './notion-sync.js';
 
 // --- Mock @notionhq/client ---
@@ -13,7 +19,10 @@ vi.mock('@notionhq/client', () => ({
   Client: function MockClient(_opts: unknown) {
     return { databases: { query: mockQuery } };
   },
-  isFullPage: vi.fn((page: unknown) => typeof page === 'object' && page !== null && 'properties' in page),
+  isFullPage: vi.fn(
+    (page: unknown) =>
+      typeof page === 'object' && page !== null && 'properties' in page,
+  ),
 }));
 
 // --- Mock fs so loadNotionConfig() returns a test config by default ---
@@ -45,9 +54,9 @@ function makePage(
   id: string,
   title: string,
   opts: {
-    due_date?: string;  // YYYY-MM-DD
-    course?: string;    // e.g. 'CS 2050'
-    status?: string;    // 'Not Started' | 'In Progress' | 'Completed'
+    due_date?: string; // YYYY-MM-DD
+    course?: string; // e.g. 'CS 2050'
+    status?: string; // 'Not Started' | 'In Progress' | 'Completed'
   } = {},
 ) {
   return {
@@ -114,7 +123,13 @@ describe('runIncrementalSync', () => {
   it('creates new todo for a new Notion page', async () => {
     setRouterState('notion_last_sync_at', '2026-01-01T00:00:00.000Z');
     mockQuery.mockResolvedValue(
-      singlePage(makePage('page-1', 'HW 15.2', { due_date: '2026-03-30', course: 'MATH 2550', status: 'Not Started' })),
+      singlePage(
+        makePage('page-1', 'HW 15.2', {
+          due_date: '2026-03-30',
+          course: 'MATH 2550',
+          status: 'Not Started',
+        }),
+      ),
     );
 
     await runIncrementalSync();
@@ -130,9 +145,7 @@ describe('runIncrementalSync', () => {
 
   it('sets category to school on new todos', async () => {
     setRouterState('notion_last_sync_at', '2026-01-01T00:00:00.000Z');
-    mockQuery.mockResolvedValue(
-      singlePage(makePage('page-1', 'HW 15.2')),
-    );
+    mockQuery.mockResolvedValue(singlePage(makePage('page-1', 'HW 15.2')));
 
     await runIncrementalSync();
 
@@ -168,16 +181,18 @@ describe('runIncrementalSync', () => {
       id: 'local-1',
       title: 'Old title',
       status: 'todo',
-      flexible: 0,             // locally changed
-      estimated_minutes: 30,   // local-only field
-      priority: 'high',        // local-only field
+      flexible: 0, // locally changed
+      estimated_minutes: 30, // local-only field
+      priority: 'high', // local-only field
       notion_id: 'page-4',
       notion_synced: 1,
     });
 
     setRouterState('notion_last_sync_at', '2026-01-01T00:00:00.000Z');
     mockQuery.mockResolvedValue(
-      singlePage(makePage('page-4', 'Updated title', { status: 'In Progress' })),
+      singlePage(
+        makePage('page-4', 'Updated title', { status: 'In Progress' }),
+      ),
     );
 
     await runIncrementalSync();
@@ -197,7 +212,9 @@ describe('runIncrementalSync', () => {
 
     await expect(runIncrementalSync()).rejects.toThrow('API error');
 
-    expect(getRouterState('notion_last_sync_at')).toBe('2026-01-01T00:00:00.000Z');
+    expect(getRouterState('notion_last_sync_at')).toBe(
+      '2026-01-01T00:00:00.000Z',
+    );
   });
 });
 
@@ -231,9 +248,7 @@ describe('runFullSync', () => {
       notion_synced: 1,
     });
 
-    mockQuery.mockResolvedValue(
-      singlePage(makePage('page-a', 'HW 15.2')),
-    );
+    mockQuery.mockResolvedValue(singlePage(makePage('page-a', 'HW 15.2')));
 
     await runFullSync();
 
@@ -252,9 +267,7 @@ describe('runFullSync', () => {
       notion_synced: 1,
     });
 
-    mockQuery.mockResolvedValue(
-      singlePage(makePage('page-a', 'HW 15.2')),
-    );
+    mockQuery.mockResolvedValue(singlePage(makePage('page-a', 'HW 15.2')));
 
     await runFullSync();
 

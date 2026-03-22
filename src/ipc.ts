@@ -5,7 +5,14 @@ import { CronExpressionParser } from 'cron-parser';
 
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, createTodo, deleteTask, getTaskById, updateTask, updateTodo } from './db.js';
+import {
+  createTask,
+  createTodo,
+  deleteTask,
+  getTaskById,
+  updateTask,
+  updateTodo,
+} from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup, Todo } from './types.js';
@@ -41,7 +48,10 @@ function writeTodoResponse(
       : { status: 'error', message: result.error ?? 'unknown error' };
     fs.writeFileSync(path.join(responseDir, filename), JSON.stringify(payload));
   } catch (err) {
-    logger.warn({ err, sourceGroup, filename }, 'Failed to write todo response file');
+    logger.warn(
+      { err, sourceGroup, filename },
+      'Failed to write todo response file',
+    );
   }
 }
 
@@ -540,7 +550,12 @@ export function processTodoIpc(
         logger.warn({ sourceGroup }, 'create_todo: missing title');
         return { ok: false, error: 'missing title' };
       }
-      const defaults = { status: 'todo' as Todo['status'], flexible: 1, priority: 'medium' as Todo['priority'], notion_synced: 0 };
+      const defaults = {
+        status: 'todo' as Todo['status'],
+        flexible: 1,
+        priority: 'medium' as Todo['priority'],
+        notion_synced: 0,
+      };
       createTodo({
         ...defaults,
         ...(p as Omit<Todo, 'created_at' | 'updated_at'>),
@@ -557,7 +572,10 @@ export function processTodoIpc(
       }
       const payload = data.payload;
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-        logger.warn({ sourceGroup, id }, 'update_todo: missing or invalid payload');
+        logger.warn(
+          { sourceGroup, id },
+          'update_todo: missing or invalid payload',
+        );
         return { ok: false, error: 'missing or invalid payload' };
       }
       updateTodo(id, payload as Partial<Omit<Todo, 'id' | 'created_at'>>);

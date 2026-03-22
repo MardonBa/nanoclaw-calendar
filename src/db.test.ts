@@ -614,8 +614,12 @@ describe('getTodoByNotionId', () => {
 
 describe('cancelDeletedNotionTodos', () => {
   it('cancels todos whose notion_id is not in the active list', () => {
-    createTodo(makeTodo({ id: 'a', notion_id: 'n-1', status: 'todo', notion_synced: 1 }));
-    createTodo(makeTodo({ id: 'b', notion_id: 'n-2', status: 'todo', notion_synced: 1 }));
+    createTodo(
+      makeTodo({ id: 'a', notion_id: 'n-1', status: 'todo', notion_synced: 1 }),
+    );
+    createTodo(
+      makeTodo({ id: 'b', notion_id: 'n-2', status: 'todo', notion_synced: 1 }),
+    );
 
     cancelDeletedNotionTodos(['n-1']); // n-2 is absent
 
@@ -632,7 +636,14 @@ describe('cancelDeletedNotionTodos', () => {
   });
 
   it('does not cancel done todos', () => {
-    createTodo(makeTodo({ id: 'done', notion_id: 'n-done', status: 'done', notion_synced: 1 }));
+    createTodo(
+      makeTodo({
+        id: 'done',
+        notion_id: 'n-done',
+        status: 'done',
+        notion_synced: 1,
+      }),
+    );
 
     cancelDeletedNotionTodos(['n-other']);
 
@@ -640,8 +651,22 @@ describe('cancelDeletedNotionTodos', () => {
   });
 
   it('returns the count of cancelled rows', () => {
-    createTodo(makeTodo({ id: 'c1', notion_id: 'n-c1', status: 'todo', notion_synced: 1 }));
-    createTodo(makeTodo({ id: 'c2', notion_id: 'n-c2', status: 'todo', notion_synced: 1 }));
+    createTodo(
+      makeTodo({
+        id: 'c1',
+        notion_id: 'n-c1',
+        status: 'todo',
+        notion_synced: 1,
+      }),
+    );
+    createTodo(
+      makeTodo({
+        id: 'c2',
+        notion_id: 'n-c2',
+        status: 'todo',
+        notion_synced: 1,
+      }),
+    );
 
     const count = cancelDeletedNotionTodos([]);
     expect(count).toBe(0); // empty array guard
@@ -651,7 +676,14 @@ describe('cancelDeletedNotionTodos', () => {
   });
 
   it('returns 0 and is no-op for empty array', () => {
-    createTodo(makeTodo({ id: 'e1', notion_id: 'n-e1', status: 'todo', notion_synced: 1 }));
+    createTodo(
+      makeTodo({
+        id: 'e1',
+        notion_id: 'n-e1',
+        status: 'todo',
+        notion_synced: 1,
+      }),
+    );
 
     const count = cancelDeletedNotionTodos([]);
 

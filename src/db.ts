@@ -685,7 +685,9 @@ function rowToTodo(row: Record<string, unknown>): Todo {
   return result as unknown as Todo;
 }
 
-export function createTodo(todo: Omit<Todo, 'created_at' | 'updated_at'>): void {
+export function createTodo(
+  todo: Omit<Todo, 'created_at' | 'updated_at'>,
+): void {
   db.prepare(
     `INSERT INTO todos
       (id, title, notes, status, completed_at, due_date, scheduled_time,
@@ -720,37 +722,85 @@ export function updateTodo(
   const setClauses: string[] = [];
   const values: unknown[] = [];
 
-  if (fields.title !== undefined) { setClauses.push('title = ?'); values.push(fields.title); }
-  if (fields.notes !== undefined) { setClauses.push('notes = ?'); values.push(fields.notes); }
-  if (fields.status !== undefined) { setClauses.push('status = ?'); values.push(fields.status); }
-  if (fields.completed_at !== undefined) { setClauses.push('completed_at = ?'); values.push(fields.completed_at); }
-  if (fields.due_date !== undefined) { setClauses.push('due_date = ?'); values.push(fields.due_date); }
-  if (fields.scheduled_time !== undefined) { setClauses.push('scheduled_time = ?'); values.push(fields.scheduled_time); }
-  if (fields.flexible !== undefined) { setClauses.push('flexible = ?'); values.push(fields.flexible); }
-  if (fields.estimated_minutes !== undefined) { setClauses.push('estimated_minutes = ?'); values.push(fields.estimated_minutes); }
-  if (fields.category !== undefined) { setClauses.push('category = ?'); values.push(fields.category); }
-  if (fields.course !== undefined) { setClauses.push('course = ?'); values.push(fields.course); }
-  if (fields.tags !== undefined) { setClauses.push('tags = ?'); values.push(serialiseTags(fields.tags)); }
-  if (fields.location !== undefined) { setClauses.push('location = ?'); values.push(fields.location); }
-  if (fields.priority !== undefined) { setClauses.push('priority = ?'); values.push(fields.priority); }
-  if (fields.energy_level !== undefined) { setClauses.push('energy_level = ?'); values.push(fields.energy_level); }
-  if (fields.notion_id !== undefined) { setClauses.push('notion_id = ?'); values.push(fields.notion_id); }
-  if (fields.notion_synced !== undefined) { setClauses.push('notion_synced = ?'); values.push(fields.notion_synced); }
+  if (fields.title !== undefined) {
+    setClauses.push('title = ?');
+    values.push(fields.title);
+  }
+  if (fields.notes !== undefined) {
+    setClauses.push('notes = ?');
+    values.push(fields.notes);
+  }
+  if (fields.status !== undefined) {
+    setClauses.push('status = ?');
+    values.push(fields.status);
+  }
+  if (fields.completed_at !== undefined) {
+    setClauses.push('completed_at = ?');
+    values.push(fields.completed_at);
+  }
+  if (fields.due_date !== undefined) {
+    setClauses.push('due_date = ?');
+    values.push(fields.due_date);
+  }
+  if (fields.scheduled_time !== undefined) {
+    setClauses.push('scheduled_time = ?');
+    values.push(fields.scheduled_time);
+  }
+  if (fields.flexible !== undefined) {
+    setClauses.push('flexible = ?');
+    values.push(fields.flexible);
+  }
+  if (fields.estimated_minutes !== undefined) {
+    setClauses.push('estimated_minutes = ?');
+    values.push(fields.estimated_minutes);
+  }
+  if (fields.category !== undefined) {
+    setClauses.push('category = ?');
+    values.push(fields.category);
+  }
+  if (fields.course !== undefined) {
+    setClauses.push('course = ?');
+    values.push(fields.course);
+  }
+  if (fields.tags !== undefined) {
+    setClauses.push('tags = ?');
+    values.push(serialiseTags(fields.tags));
+  }
+  if (fields.location !== undefined) {
+    setClauses.push('location = ?');
+    values.push(fields.location);
+  }
+  if (fields.priority !== undefined) {
+    setClauses.push('priority = ?');
+    values.push(fields.priority);
+  }
+  if (fields.energy_level !== undefined) {
+    setClauses.push('energy_level = ?');
+    values.push(fields.energy_level);
+  }
+  if (fields.notion_id !== undefined) {
+    setClauses.push('notion_id = ?');
+    values.push(fields.notion_id);
+  }
+  if (fields.notion_synced !== undefined) {
+    setClauses.push('notion_synced = ?');
+    values.push(fields.notion_synced);
+  }
 
   if (setClauses.length === 0) return;
 
-  setClauses.push('updated_at = datetime(\'now\')');
+  setClauses.push("updated_at = datetime('now')");
   values.push(id);
 
-  db.prepare(
-    `UPDATE todos SET ${setClauses.join(', ')} WHERE id = ?`,
-  ).run(...values);
+  db.prepare(`UPDATE todos SET ${setClauses.join(', ')} WHERE id = ?`).run(
+    ...values,
+  );
 }
 
 export function getTodoById(id: string): Todo | undefined {
-  const row = db
-    .prepare('SELECT * FROM todos WHERE id = ?')
-    .get(id) as Record<string, unknown> | undefined;
+  const row = db.prepare('SELECT * FROM todos WHERE id = ?').get(id) as
+    | Record<string, unknown>
+    | undefined;
   return row ? rowToTodo(row) : undefined;
 }
 

@@ -31,7 +31,9 @@ export function loadNotionConfig(): NotionConfig | null {
     'notion.json',
   );
   if (!fs.existsSync(configPath)) {
-    logger.warn('Notion config not found at ~/.config/nanoclaw/notion.json — skipping sync');
+    logger.warn(
+      'Notion config not found at ~/.config/nanoclaw/notion.json — skipping sync',
+    );
     return null;
   }
   try {
@@ -63,7 +65,12 @@ type NotionProps = PageObjectResponse['properties'];
 function extractTitle(props: NotionProps, name: string): string | undefined {
   const prop = props[name];
   if (!prop || prop.type !== 'title') return undefined;
-  return prop.title.map((t) => t.plain_text).join('').trim() || undefined;
+  return (
+    prop.title
+      .map((t) => t.plain_text)
+      .join('')
+      .trim() || undefined
+  );
 }
 
 function extractDate(props: NotionProps, name: string): string | undefined {
@@ -160,7 +167,9 @@ async function fetchAllPages(
     for (const page of response.results) {
       if (isFullPage(page)) pages.push(page);
     }
-    cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+    cursor = response.has_more
+      ? (response.next_cursor ?? undefined)
+      : undefined;
   } while (cursor);
   return pages;
 }
@@ -189,7 +198,10 @@ export async function runIncrementalSync(): Promise<void> {
     return;
   }
 
-  logger.info({ count: pages.length }, 'Notion incremental sync: upserting pages');
+  logger.info(
+    { count: pages.length },
+    'Notion incremental sync: upserting pages',
+  );
   for (const page of pages) {
     upsertPage(page);
   }
@@ -214,7 +226,10 @@ export async function runFullSync(): Promise<void> {
 
   const cancelled = cancelDeletedNotionTodos([...notionIds]);
   if (cancelled > 0) {
-    logger.info({ count: cancelled }, 'Notion full sync: cancelled deleted assignments');
+    logger.info(
+      { count: cancelled },
+      'Notion full sync: cancelled deleted assignments',
+    );
   }
 
   setRouterState('notion_last_sync_at', new Date().toISOString());

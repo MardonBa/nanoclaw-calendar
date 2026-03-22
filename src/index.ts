@@ -228,7 +228,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
           await channel.sendMessage(chatJid, text);
           outputSentToUser = true;
         } catch (err) {
-          logger.error({ err, chatJid }, 'Failed to send agent response to user');
+          logger.error(
+            { err, chatJid },
+            'Failed to send agent response to user',
+          );
         }
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
@@ -691,10 +694,17 @@ async function main(): Promise<void> {
   try {
     const errorDir = path.join(DATA_DIR, 'ipc', 'errors');
     if (fs.existsSync(errorDir)) {
-      const errorFiles = fs.readdirSync(errorDir).filter((f) => f.endsWith('.json'));
+      const errorFiles = fs
+        .readdirSync(errorDir)
+        .filter((f) => f.endsWith('.json'));
       if (errorFiles.length > 0) {
-        logger.warn({ count: errorFiles.length }, 'Stale IPC error files found on startup');
-        const mainEntry = Object.entries(registeredGroups).find(([, g]) => g.isMain);
+        logger.warn(
+          { count: errorFiles.length },
+          'Stale IPC error files found on startup',
+        );
+        const mainEntry = Object.entries(registeredGroups).find(
+          ([, g]) => g.isMain,
+        );
         if (mainEntry) {
           const [mainJid] = mainEntry;
           const mainChannel = findChannel(channels, mainJid);

@@ -233,7 +233,10 @@ async function runTask(
     error = err instanceof Error ? err.message : String(err);
     logger.error({ taskId: task.id, error }, 'Task failed');
     try {
-      await deps.sendMessage(task.chat_jid, `⚠️ Scheduled task failed: ${error}`);
+      await deps.sendMessage(
+        task.chat_jid,
+        `⚠️ Scheduled task failed: ${error}`,
+      );
     } catch (notifyErr) {
       logger.warn({ notifyErr }, 'Failed to send task error notification');
     }

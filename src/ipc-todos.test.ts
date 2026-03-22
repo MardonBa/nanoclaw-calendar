@@ -38,7 +38,11 @@ describe('processTodoIpc — create_todo', () => {
 
   it('stores optional fields when provided in payload', () => {
     processTodoIpc(
-      makeCreateData({ due_date: '2026-05-01', category: 'school', course: 'COMP 101' }),
+      makeCreateData({
+        due_date: '2026-05-01',
+        category: 'school',
+        course: 'COMP 101',
+      }),
       'main',
       true,
     );
@@ -49,20 +53,32 @@ describe('processTodoIpc — create_todo', () => {
   });
 
   it('stores and deserialises tags', () => {
-    processTodoIpc(makeCreateData({ tags: ['campus', 'urgent'] }), 'main', true);
+    processTodoIpc(
+      makeCreateData({ tags: ['campus', 'urgent'] }),
+      'main',
+      true,
+    );
     const row = getTodoById('todo-1');
     expect(row!.tags).toEqual(['campus', 'urgent']);
   });
 
   it('does nothing when payload id is missing', () => {
-    const result = processTodoIpc({ type: 'create_todo', payload: { title: 'No id' } }, 'main', true);
+    const result = processTodoIpc(
+      { type: 'create_todo', payload: { title: 'No id' } },
+      'main',
+      true,
+    );
     expect(result.ok).toBe(false);
     expect(result.error).toBeDefined();
     expect(getTodoById('todo-1')).toBeUndefined();
   });
 
   it('does nothing when payload title is missing', () => {
-    const result = processTodoIpc({ type: 'create_todo', payload: { id: 'todo-1' } }, 'main', true);
+    const result = processTodoIpc(
+      { type: 'create_todo', payload: { id: 'todo-1' } },
+      'main',
+      true,
+    );
     expect(result.ok).toBe(false);
     expect(result.error).toBeDefined();
     expect(getTodoById('todo-1')).toBeUndefined();
@@ -71,7 +87,11 @@ describe('processTodoIpc — create_todo', () => {
   it('does not throw when payload is null', () => {
     let result!: ReturnType<typeof processTodoIpc>;
     expect(() => {
-      result = processTodoIpc({ type: 'create_todo', payload: null }, 'main', true);
+      result = processTodoIpc(
+        { type: 'create_todo', payload: null },
+        'main',
+        true,
+      );
     }).not.toThrow();
     expect(result.ok).toBe(false);
     expect(getTodoById('todo-1')).toBeUndefined();
@@ -80,7 +100,11 @@ describe('processTodoIpc — create_todo', () => {
   it('does not throw when payload is a string', () => {
     let result!: ReturnType<typeof processTodoIpc>;
     expect(() => {
-      result = processTodoIpc({ type: 'create_todo', payload: 'bad' }, 'main', true);
+      result = processTodoIpc(
+        { type: 'create_todo', payload: 'bad' },
+        'main',
+        true,
+      );
     }).not.toThrow();
     expect(result.ok).toBe(false);
     expect(getTodoById('todo-1')).toBeUndefined();
