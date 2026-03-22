@@ -366,6 +366,20 @@ async function runQuery(
   let messageCount = 0;
   let resultCount = 0;
 
+  // Load Notion token from mounted config (absent = Notion MCP not registered)
+  let notionToken: string | undefined;
+  const notionConfigPath = '/workspace/config/notion.json';
+  if (fs.existsSync(notionConfigPath)) {
+    try {
+      const notionConfig = JSON.parse(fs.readFileSync(notionConfigPath, 'utf-8'));
+      if (notionConfig.token && typeof notionConfig.token === 'string') {
+        notionToken = notionConfig.token;
+      }
+    } catch (err) {
+      log(`Failed to read Notion config: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // Load global CLAUDE.md as additional system context (shared across all groups)
   const globalClaudeMdPath = '/workspace/global/CLAUDE.md';
   let globalClaudeMd: string | undefined;
@@ -423,6 +437,19 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
+        ...(notionToken
+          ? {
+              notion: {
+                command: '/app/node_modules/.bin/notion-mcp-server',
+                args: [],
+                env: {
+                  OPENAPI_MCP_HEADERS: JSON.stringify({
+                    Authorization: `Bearer ${notionToken}`,
+                  }),
+                },
+              },
+            }
+          : {}),
       },
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook(containerInput.assistantName)] }],

@@ -66,6 +66,34 @@ systemctl --user stop nanoclaw
 systemctl --user restart nanoclaw
 ```
 
+## Error Handling
+
+Failures should be visible to the user, not silently swallowed into logs.
+
+**Prefer notifying the user over silent failure.** If a scheduled task fails, an IPC operation is rejected, or a send fails, send a WhatsApp/channel message explaining what went wrong so the user can act on it. Wrap each notification call in its own try-catch so a failed notification doesn't mask the original error.
+
+**Retry when the operation is stateless and idempotent.** Network hiccups and transient errors are good candidates. Do not retry operations that carry side effects (e.g. sending a message) — retrying those risks duplicates.
+
+**Never let failures crash the process.** The host is a long-running daemon. Catch errors at subsystem boundaries (scheduler loop, IPC watcher, message loop) and log them, then continue. Only call `process.exit` for truly unrecoverable startup failures.
+
+**Log everything, but surface actionable errors to the user.** `logger.error` / `logger.warn` for internal detail; a plain-language channel message for anything the user needs to know about or can fix.
+
+## Testing
+
+All new features must include tests. Run the suite with `npm test`.
+
+Tests live in `src/**/*.test.ts` and `setup/**/*.test.ts` (picked up automatically by vitest).
+
+**Norms:**
+- Import `describe`, `it`, `expect`, `beforeEach` explicitly from `'vitest'` — globals are not enabled
+- Use `.js` extensions on all local imports (e.g. `'./db.js'`)
+- Reset state in a global `beforeEach` at the top of each test file (e.g. `_initTestDatabase()`)
+- One `describe` block per function; test names use imperative verbs ("stores a message", "returns undefined for unknown id")
+- Assertions: prefer `.toBe()` for primitives, `.toEqual()` for objects/arrays, `.toBeUndefined()` / `.toBeDefined()` for presence checks
+- Add a helper function (e.g. `makeTodo()`, `store()`) to reduce fixture boilerplate — see existing examples in `src/db.test.ts`
+- Test the happy path, optional fields being absent, and key edge cases (nulls, empty inputs, no-ops)
+- SQLite nullable columns come back as `null` — db layer functions should convert these to `undefined` so return types match TypeScript interfaces
+
 ## Troubleshooting
 
 **WhatsApp not connecting after upgrade:** WhatsApp is now a separate skill, not bundled in core. Run `/add-whatsapp` (or `npx tsx scripts/apply-skill.ts .claude/skills/add-whatsapp && npm run build`) to install it. Existing auth credentials and groups are preserved.

@@ -99,6 +99,14 @@ async function runTask(
       result: null,
       error,
     });
+    try {
+      await deps.sendMessage(
+        task.chat_jid,
+        `⚠️ Scheduled task failed — invalid group folder "${task.group_folder}". Task has been paused.`,
+      );
+    } catch (notifyErr) {
+      logger.warn({ notifyErr }, 'Failed to send task error notification');
+    }
     return;
   }
   fs.mkdirSync(groupDir, { recursive: true });
@@ -126,6 +134,14 @@ async function runTask(
       result: null,
       error: `Group not found: ${task.group_folder}`,
     });
+    try {
+      await deps.sendMessage(
+        task.chat_jid,
+        `⚠️ Scheduled task failed — group not found for this chat. Task has been paused.`,
+      );
+    } catch (notifyErr) {
+      logger.warn({ notifyErr }, 'Failed to send task error notification');
+    }
     return;
   }
 
@@ -216,6 +232,11 @@ async function runTask(
     if (closeTimer) clearTimeout(closeTimer);
     error = err instanceof Error ? err.message : String(err);
     logger.error({ taskId: task.id, error }, 'Task failed');
+    try {
+      await deps.sendMessage(task.chat_jid, `⚠️ Scheduled task failed: ${error}`);
+    } catch (notifyErr) {
+      logger.warn({ notifyErr }, 'Failed to send task error notification');
+    }
   }
 
   const durationMs = Date.now() - startTime;

@@ -86,6 +86,9 @@ vi.mock('child_process', async () => {
   };
 });
 
+import fs from 'fs';
+import { spawn } from 'child_process';
+
 import { runContainerAgent, ContainerOutput } from './container-runner.js';
 import type { RegisteredGroup } from './types.js';
 
@@ -110,6 +113,58 @@ function emitOutputMarker(
   const json = JSON.stringify(output);
   proc.stdout.push(`${OUTPUT_START_MARKER}\n${json}\n${OUTPUT_END_MARKER}\n`);
 }
+
+describe('notion config mounting', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    fakeProc = createFakeProcess();
+    vi.mocked(spawn).mockClear();
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+  });
+
+  it('mounts notion config when config file exists', async () => {
+    vi.mocked(fs.existsSync).mockImplementation((p) =>
+      String(p).includes('notion.json'),
+    );
+
+    const resultPromise = runContainerAgent(
+      testGroup,
+      testInput,
+      () => {},
+      vi.fn(async () => {}),
+    );
+
+    fakeProc.emit('close', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await resultPromise;
+
+    const spawnArgs = vi.mocked(spawn).mock.calls[0][1] as string[];
+    expect(spawnArgs.join(' ')).toContain('notion.json');
+  });
+
+  it('does not mount notion config when config file is absent', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+
+    const resultPromise = runContainerAgent(
+      testGroup,
+      testInput,
+      () => {},
+      vi.fn(async () => {}),
+    );
+
+    fakeProc.emit('close', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await resultPromise;
+
+    const spawnArgs = vi.mocked(spawn).mock.calls[0][1] as string[];
+    expect(spawnArgs.join(' ')).not.toContain('notion.json');
+  });
+});
 
 describe('container-runner timeout behavior', () => {
   beforeEach(() => {

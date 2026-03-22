@@ -4,6 +4,7 @@
  */
 import { ChildProcess, exec, spawn } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import {
@@ -207,6 +208,21 @@ function buildVolumeMounts(
       isMain,
     );
     mounts.push(...validatedMounts);
+  }
+
+  // Notion config (optional — silently skipped when not present)
+  const notionConfigPath = path.join(
+    os.homedir(),
+    '.config',
+    'nanoclaw',
+    'notion.json',
+  );
+  if (fs.existsSync(notionConfigPath)) {
+    mounts.push({
+      hostPath: notionConfigPath,
+      containerPath: '/workspace/config/notion.json',
+      readonly: true,
+    });
   }
 
   return mounts;

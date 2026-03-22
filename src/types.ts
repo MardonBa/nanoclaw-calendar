@@ -77,6 +77,28 @@ export interface TaskRunLog {
   error: string | null;
 }
 
+export interface Todo {
+  id: string; // UUID, always generated locally
+  title: string;
+  notes?: string;
+  status: 'todo' | 'in_progress' | 'done' | 'cancelled';
+  completed_at?: string; // ISO datetime
+  due_date?: string; // ISO date YYYY-MM-DD
+  scheduled_time?: string; // ISO datetime
+  flexible: number; // 1 = soft intention, 0 = hard appointment
+  estimated_minutes?: number;
+  category?: string;
+  course?: string;
+  tags?: string[]; // serialised as JSON TEXT in DB
+  location?: string;
+  priority: 'low' | 'medium' | 'high';
+  energy_level?: 'low' | 'medium' | 'high';
+  notion_id?: string; // Notion page ID, null if local-only
+  notion_synced: number; // 0 or 1
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Channel abstraction ---
 
 export interface Channel {

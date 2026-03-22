@@ -2,18 +2,25 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 import {
   _initTestDatabase,
+  cancelDeletedNotionTodos,
   createTask,
+  createTodo,
   deleteTask,
   getAllChats,
   getAllRegisteredGroups,
   getMessagesSince,
   getNewMessages,
   getTaskById,
+  getTodoById,
+  getTodoByNotionId,
   setRegisteredGroup,
   storeChatMetadata,
   storeMessage,
   updateTask,
+  updateTodo,
 } from './db.js';
+
+import type { Todo } from './types.js';
 
 beforeEach(() => {
   _initTestDatabase();
@@ -480,5 +487,175 @@ describe('registered group isMain', () => {
     const group = groups['group@g.us'];
     expect(group).toBeDefined();
     expect(group.isMain).toBeUndefined();
+  });
+});
+
+// --- Todo CRUD ---
+
+function makeTodo(
+  overrides: Partial<Omit<Todo, 'created_at' | 'updated_at'>> = {},
+): Omit<Todo, 'created_at' | 'updated_at'> {
+  return {
+    id: 'todo-1',
+    title: 'Test todo',
+    status: 'todo',
+    flexible: 1,
+    priority: 'medium',
+    notion_synced: 0,
+    ...overrides,
+  };
+}
+
+describe('createTodo', () => {
+  it('inserts a todo and retrieves it by id', () => {
+    createTodo(makeTodo());
+    const row = getTodoById('todo-1');
+    expect(row).toBeDefined();
+    expect(row!.title).toBe('Test todo');
+    expect(row!.status).toBe('todo');
+    expect(row!.priority).toBe('medium');
+    expect(row!.flexible).toBe(1);
+    expect(row!.notion_synced).toBe(0);
+  });
+
+  it('sets created_at and updated_at automatically', () => {
+    createTodo(makeTodo());
+    const row = getTodoById('todo-1');
+    expect(row!.created_at).toBeDefined();
+    expect(row!.updated_at).toBeDefined();
+    expect(row!.created_at.length).toBeGreaterThan(0);
+  });
+
+  it('stores undefined for optional fields when omitted', () => {
+    createTodo(makeTodo());
+    const row = getTodoById('todo-1');
+    expect(row!.notes).toBeUndefined();
+    expect(row!.due_date).toBeUndefined();
+    expect(row!.course).toBeUndefined();
+    expect(row!.location).toBeUndefined();
+    expect(row!.tags).toBeUndefined();
+    expect(row!.notion_id).toBeUndefined();
+  });
+
+  it('serialises tags array and deserialises on read', () => {
+    createTodo(makeTodo({ tags: ['campus', 'urgent'] }));
+    const row = getTodoById('todo-1');
+    expect(row!.tags).toEqual(['campus', 'urgent']);
+  });
+
+  it('stores a todo with a notion_id and finds it by notion_id', () => {
+    createTodo(makeTodo({ notion_id: 'notion-abc' }));
+    const row = getTodoByNotionId('notion-abc');
+    expect(row).toBeDefined();
+    expect(row!.id).toBe('todo-1');
+  });
+});
+
+describe('updateTodo', () => {
+  it('updates specified fields only', () => {
+    createTodo(makeTodo({ due_date: '2026-04-01' }));
+    updateTodo('todo-1', { title: 'Updated title' });
+    const row = getTodoById('todo-1');
+    expect(row!.title).toBe('Updated title');
+    expect(row!.due_date).toBe('2026-04-01');
+    expect(row!.priority).toBe('medium');
+  });
+
+  it('sets updated_at after update', () => {
+    createTodo(makeTodo());
+    updateTodo('todo-1', { status: 'done' });
+    const row = getTodoById('todo-1');
+    expect(row!.updated_at).toBeDefined();
+    expect(row!.updated_at >= row!.created_at).toBe(true);
+  });
+
+  it('no-ops when fields object is empty', () => {
+    createTodo(makeTodo());
+    const before = getTodoById('todo-1');
+    updateTodo('todo-1', {});
+    const after = getTodoById('todo-1');
+    expect(after!.title).toBe(before!.title);
+    expect(after!.status).toBe(before!.status);
+  });
+
+  it('serialises tags on update', () => {
+    createTodo(makeTodo());
+    updateTodo('todo-1', { tags: ['home'] });
+    const row = getTodoById('todo-1');
+    expect(row!.tags).toEqual(['home']);
+  });
+
+  it('sets notion_id on an existing local-only todo', () => {
+    createTodo(makeTodo());
+    updateTodo('todo-1', { notion_id: 'notion-xyz', notion_synced: 1 });
+    const row = getTodoByNotionId('notion-xyz');
+    expect(row).toBeDefined();
+    expect(row!.id).toBe('todo-1');
+    expect(row!.notion_synced).toBe(1);
+  });
+});
+
+describe('getTodoById', () => {
+  it('returns undefined for unknown id', () => {
+    expect(getTodoById('does-not-exist')).toBeUndefined();
+  });
+});
+
+describe('getTodoByNotionId', () => {
+  it('returns undefined for unknown notion_id', () => {
+    expect(getTodoByNotionId('unknown')).toBeUndefined();
+  });
+
+  it('returns undefined for a local-only todo with no notion_id', () => {
+    createTodo(makeTodo());
+    expect(getTodoByNotionId('todo-1')).toBeUndefined();
+  });
+});
+
+describe('cancelDeletedNotionTodos', () => {
+  it('cancels todos whose notion_id is not in the active list', () => {
+    createTodo(makeTodo({ id: 'a', notion_id: 'n-1', status: 'todo', notion_synced: 1 }));
+    createTodo(makeTodo({ id: 'b', notion_id: 'n-2', status: 'todo', notion_synced: 1 }));
+
+    cancelDeletedNotionTodos(['n-1']); // n-2 is absent
+
+    expect(getTodoById('a')!.status).toBe('todo');
+    expect(getTodoById('b')!.status).toBe('cancelled');
+  });
+
+  it('does not cancel todos without a notion_id', () => {
+    createTodo(makeTodo({ id: 'local' }));
+
+    cancelDeletedNotionTodos(['n-99']);
+
+    expect(getTodoById('local')!.status).toBe('todo');
+  });
+
+  it('does not cancel done todos', () => {
+    createTodo(makeTodo({ id: 'done', notion_id: 'n-done', status: 'done', notion_synced: 1 }));
+
+    cancelDeletedNotionTodos(['n-other']);
+
+    expect(getTodoById('done')!.status).toBe('done');
+  });
+
+  it('returns the count of cancelled rows', () => {
+    createTodo(makeTodo({ id: 'c1', notion_id: 'n-c1', status: 'todo', notion_synced: 1 }));
+    createTodo(makeTodo({ id: 'c2', notion_id: 'n-c2', status: 'todo', notion_synced: 1 }));
+
+    const count = cancelDeletedNotionTodos([]);
+    expect(count).toBe(0); // empty array guard
+
+    const count2 = cancelDeletedNotionTodos(['n-c1']); // c2 gets cancelled
+    expect(count2).toBe(1);
+  });
+
+  it('returns 0 and is no-op for empty array', () => {
+    createTodo(makeTodo({ id: 'e1', notion_id: 'n-e1', status: 'todo', notion_synced: 1 }));
+
+    const count = cancelDeletedNotionTodos([]);
+
+    expect(count).toBe(0);
+    expect(getTodoById('e1')!.status).toBe('todo');
   });
 });

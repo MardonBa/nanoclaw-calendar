@@ -4,6 +4,7 @@ import path from 'path';
 import {
   ASSISTANT_NAME,
   CREDENTIAL_PROXY_PORT,
+  DATA_DIR,
   IDLE_TIMEOUT,
   POLL_INTERVAL,
   TIMEZONE,
@@ -56,6 +57,7 @@ import {
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
+import { runIncrementalSync, runFullSync } from './notion-sync.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -222,8 +224,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
       if (text) {
-        await channel.sendMessage(chatJid, text);
-        outputSentToUser = true;
+        try {
+          await channel.sendMessage(chatJid, text);
+          outputSentToUser = true;
+        } catch (err) {
+          logger.error({ err, chatJid }, 'Failed to send agent response to user');
+        }
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
@@ -517,20 +523,28 @@ async function main(): Promise<void> {
         chatJid,
         process.cwd(),
       );
-      if (result.ok) {
-        await channel.sendMessage(chatJid, result.url);
-      } else {
-        await channel.sendMessage(
-          chatJid,
-          `Remote Control failed: ${result.error}`,
-        );
+      try {
+        if (result.ok) {
+          await channel.sendMessage(chatJid, result.url);
+        } else {
+          await channel.sendMessage(
+            chatJid,
+            `Remote Control failed: ${result.error}`,
+          );
+        }
+      } catch (err) {
+        logger.error({ err }, 'Failed to send remote control response');
       }
     } else {
       const result = stopRemoteControl();
-      if (result.ok) {
-        await channel.sendMessage(chatJid, 'Remote Control session ended.');
-      } else {
-        await channel.sendMessage(chatJid, result.error);
+      try {
+        if (result.ok) {
+          await channel.sendMessage(chatJid, 'Remote Control session ended.');
+        } else {
+          await channel.sendMessage(chatJid, result.error);
+        }
+      } catch (err) {
+        logger.error({ err }, 'Failed to send remote control response');
       }
     }
   }
@@ -610,7 +624,11 @@ async function main(): Promise<void> {
         return;
       }
       const text = formatOutbound(rawText);
-      if (text) await channel.sendMessage(jid, text);
+      try {
+        if (text) await channel.sendMessage(jid, text);
+      } catch (err) {
+        logger.error({ err, jid }, 'Failed to send scheduled task result');
+      }
     },
   });
   startIpcWatcher({
@@ -649,6 +667,50 @@ async function main(): Promise<void> {
   });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
+
+  // Notion sync: startup run, then 12h incremental + weekly full for deletion detection
+  runIncrementalSync().catch((err) =>
+    logger.error({ err }, 'Notion startup sync failed'),
+  );
+  setInterval(
+    () =>
+      runIncrementalSync().catch((err) =>
+        logger.error({ err }, 'Notion incremental sync failed'),
+      ),
+    12 * 60 * 60 * 1000,
+  );
+  setInterval(
+    () =>
+      runFullSync().catch((err) =>
+        logger.error({ err }, 'Notion full sync failed'),
+      ),
+    7 * 24 * 60 * 60 * 1000,
+  );
+
+  // Check for stale IPC error files from previous run
+  try {
+    const errorDir = path.join(DATA_DIR, 'ipc', 'errors');
+    if (fs.existsSync(errorDir)) {
+      const errorFiles = fs.readdirSync(errorDir).filter((f) => f.endsWith('.json'));
+      if (errorFiles.length > 0) {
+        logger.warn({ count: errorFiles.length }, 'Stale IPC error files found on startup');
+        const mainEntry = Object.entries(registeredGroups).find(([, g]) => g.isMain);
+        if (mainEntry) {
+          const [mainJid] = mainEntry;
+          const mainChannel = findChannel(channels, mainJid);
+          if (mainChannel?.isConnected()) {
+            await mainChannel.sendMessage(
+              mainJid,
+              `⚠️ ${errorFiles.length} IPC error file(s) found in data/ipc/errors/ from a previous run. These are failed operations that were not retried. Check logs for details.`,
+            );
+          }
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to check IPC error directory on startup');
+  }
+
   startMessageLoop().catch((err) => {
     logger.fatal({ err }, 'Message loop crashed unexpectedly');
     process.exit(1);

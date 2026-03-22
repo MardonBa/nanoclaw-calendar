@@ -10,6 +10,7 @@ import {
   RegisteredGroup,
   ScheduledTask,
   TaskRunLog,
+  Todo,
 } from './types.js';
 
 let db: Database.Database;
@@ -82,6 +83,30 @@ function createSchema(database: Database.Database): void {
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS todos (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      notes TEXT,
+      status TEXT DEFAULT 'todo',
+      completed_at TEXT,
+      due_date TEXT,
+      scheduled_time TEXT,
+      flexible INTEGER DEFAULT 1,
+      estimated_minutes INTEGER,
+      category TEXT,
+      course TEXT,
+      tags TEXT,
+      location TEXT,
+      priority TEXT DEFAULT 'medium',
+      energy_level TEXT,
+      notion_id TEXT UNIQUE,
+      notion_synced INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_todos_due_date ON todos(due_date);
+    CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
+    CREATE INDEX IF NOT EXISTS idx_todos_notion_id ON todos(notion_id);
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -632,6 +657,122 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     };
   }
   return result;
+}
+
+// --- Todo accessors ---
+
+function serialiseTags(tags?: string[]): string | null {
+  return tags && tags.length > 0 ? JSON.stringify(tags) : null;
+}
+
+function deserialiseTags(raw?: string | null): string[] | undefined {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as string[];
+  } catch {
+    return undefined;
+  }
+}
+
+function rowToTodo(row: Record<string, unknown>): Todo {
+  // SQLite returns null for missing optional fields; convert to undefined
+  // so the returned object matches the Todo interface (optional fields use ?).
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (value !== null) result[key] = value;
+  }
+  result.tags = deserialiseTags(row.tags as string | null);
+  return result as unknown as Todo;
+}
+
+export function createTodo(todo: Omit<Todo, 'created_at' | 'updated_at'>): void {
+  db.prepare(
+    `INSERT INTO todos
+      (id, title, notes, status, completed_at, due_date, scheduled_time,
+       flexible, estimated_minutes, category, course, tags, location,
+       priority, energy_level, notion_id, notion_synced)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    todo.id,
+    todo.title,
+    todo.notes ?? null,
+    todo.status,
+    todo.completed_at ?? null,
+    todo.due_date ?? null,
+    todo.scheduled_time ?? null,
+    todo.flexible,
+    todo.estimated_minutes ?? null,
+    todo.category ?? null,
+    todo.course ?? null,
+    serialiseTags(todo.tags),
+    todo.location ?? null,
+    todo.priority,
+    todo.energy_level ?? null,
+    todo.notion_id ?? null,
+    todo.notion_synced,
+  );
+}
+
+export function updateTodo(
+  id: string,
+  fields: Partial<Omit<Todo, 'id' | 'created_at'>>,
+): void {
+  const setClauses: string[] = [];
+  const values: unknown[] = [];
+
+  if (fields.title !== undefined) { setClauses.push('title = ?'); values.push(fields.title); }
+  if (fields.notes !== undefined) { setClauses.push('notes = ?'); values.push(fields.notes); }
+  if (fields.status !== undefined) { setClauses.push('status = ?'); values.push(fields.status); }
+  if (fields.completed_at !== undefined) { setClauses.push('completed_at = ?'); values.push(fields.completed_at); }
+  if (fields.due_date !== undefined) { setClauses.push('due_date = ?'); values.push(fields.due_date); }
+  if (fields.scheduled_time !== undefined) { setClauses.push('scheduled_time = ?'); values.push(fields.scheduled_time); }
+  if (fields.flexible !== undefined) { setClauses.push('flexible = ?'); values.push(fields.flexible); }
+  if (fields.estimated_minutes !== undefined) { setClauses.push('estimated_minutes = ?'); values.push(fields.estimated_minutes); }
+  if (fields.category !== undefined) { setClauses.push('category = ?'); values.push(fields.category); }
+  if (fields.course !== undefined) { setClauses.push('course = ?'); values.push(fields.course); }
+  if (fields.tags !== undefined) { setClauses.push('tags = ?'); values.push(serialiseTags(fields.tags)); }
+  if (fields.location !== undefined) { setClauses.push('location = ?'); values.push(fields.location); }
+  if (fields.priority !== undefined) { setClauses.push('priority = ?'); values.push(fields.priority); }
+  if (fields.energy_level !== undefined) { setClauses.push('energy_level = ?'); values.push(fields.energy_level); }
+  if (fields.notion_id !== undefined) { setClauses.push('notion_id = ?'); values.push(fields.notion_id); }
+  if (fields.notion_synced !== undefined) { setClauses.push('notion_synced = ?'); values.push(fields.notion_synced); }
+
+  if (setClauses.length === 0) return;
+
+  setClauses.push('updated_at = datetime(\'now\')');
+  values.push(id);
+
+  db.prepare(
+    `UPDATE todos SET ${setClauses.join(', ')} WHERE id = ?`,
+  ).run(...values);
+}
+
+export function getTodoById(id: string): Todo | undefined {
+  const row = db
+    .prepare('SELECT * FROM todos WHERE id = ?')
+    .get(id) as Record<string, unknown> | undefined;
+  return row ? rowToTodo(row) : undefined;
+}
+
+export function getTodoByNotionId(notionId: string): Todo | undefined {
+  const row = db
+    .prepare('SELECT * FROM todos WHERE notion_id = ?')
+    .get(notionId) as Record<string, unknown> | undefined;
+  return row ? rowToTodo(row) : undefined;
+}
+
+export function cancelDeletedNotionTodos(activeNotionIds: string[]): number {
+  if (activeNotionIds.length === 0) return 0;
+  const placeholders = activeNotionIds.map(() => '?').join(', ');
+  const result = db
+    .prepare(
+      `UPDATE todos SET status = 'cancelled', updated_at = datetime('now')
+       WHERE notion_id IS NOT NULL
+         AND notion_id NOT IN (${placeholders})
+         AND status != 'done'`,
+    )
+    .run(...activeNotionIds);
+  return result.changes;
 }
 
 // --- JSON migration ---

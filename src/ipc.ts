@@ -5,10 +5,10 @@ import { CronExpressionParser } from 'cron-parser';
 
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
+import { createTask, createTodo, deleteTask, getTaskById, updateTask, updateTodo } from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
-import { RegisteredGroup } from './types.js';
+import { RegisteredGroup, Todo } from './types.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
@@ -26,6 +26,24 @@ export interface IpcDeps {
 }
 
 let ipcWatcherRunning = false;
+
+function writeTodoResponse(
+  ipcBaseDir: string,
+  sourceGroup: string,
+  filename: string,
+  result: { ok: boolean; error?: string },
+): void {
+  try {
+    const responseDir = path.join(ipcBaseDir, sourceGroup, 'responses');
+    fs.mkdirSync(responseDir, { recursive: true });
+    const payload = result.ok
+      ? { status: 'ok' }
+      : { status: 'error', message: result.error ?? 'unknown error' };
+    fs.writeFileSync(path.join(responseDir, filename), JSON.stringify(payload));
+  } catch (err) {
+    logger.warn({ err, sourceGroup, filename }, 'Failed to write todo response file');
+  }
+}
 
 export function startIpcWatcher(deps: IpcDeps): void {
   if (ipcWatcherRunning) {
@@ -144,6 +162,42 @@ export function startIpcWatcher(deps: IpcDeps): void {
         }
       } catch (err) {
         logger.error({ err, sourceGroup }, 'Error reading IPC tasks directory');
+      }
+
+      // Process todos from this group's IPC directory
+      try {
+        const todosDir = path.join(ipcBaseDir, sourceGroup, 'todos');
+        if (fs.existsSync(todosDir)) {
+          const todoFiles = fs
+            .readdirSync(todosDir)
+            .filter((f) => f.endsWith('.json'));
+          for (const file of todoFiles) {
+            const filePath = path.join(todosDir, file);
+            try {
+              const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+              const result = processTodoIpc(data, sourceGroup, isMain);
+              writeTodoResponse(ipcBaseDir, sourceGroup, file, result);
+              fs.unlinkSync(filePath);
+            } catch (err) {
+              logger.error(
+                { file, sourceGroup, err },
+                'Error processing IPC todo',
+              );
+              writeTodoResponse(ipcBaseDir, sourceGroup, file, {
+                ok: false,
+                error: 'internal error processing todo',
+              });
+              const errorDir = path.join(ipcBaseDir, 'errors');
+              fs.mkdirSync(errorDir, { recursive: true });
+              fs.renameSync(
+                filePath,
+                path.join(errorDir, `${sourceGroup}-${file}`),
+              );
+            }
+          }
+        }
+      } catch (err) {
+        logger.error({ err, sourceGroup }, 'Error reading IPC todos directory');
       }
     }
 
@@ -457,5 +511,62 @@ export async function processTaskIpc(
 
     default:
       logger.warn({ type: data.type }, 'Unknown IPC task type');
+  }
+}
+
+export function processTodoIpc(
+  data: Record<string, unknown>,
+  sourceGroup: string,
+  isMain: boolean,
+): { ok: boolean; error?: string } {
+  // sourceGroup and isMain are available for future authorization extensions.
+  // Currently all verified IPC sources may create/update todos.
+  void sourceGroup;
+  void isMain;
+
+  switch (data.type) {
+    case 'create_todo': {
+      const payload = data.payload;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        logger.warn({ sourceGroup }, 'create_todo: missing or invalid payload');
+        return { ok: false, error: 'missing or invalid payload' };
+      }
+      const p = payload as Record<string, unknown>;
+      if (!p.id || typeof p.id !== 'string') {
+        logger.warn({ sourceGroup }, 'create_todo: missing id');
+        return { ok: false, error: 'missing id' };
+      }
+      if (!p.title || typeof p.title !== 'string') {
+        logger.warn({ sourceGroup }, 'create_todo: missing title');
+        return { ok: false, error: 'missing title' };
+      }
+      const defaults = { status: 'todo' as Todo['status'], flexible: 1, priority: 'medium' as Todo['priority'], notion_synced: 0 };
+      createTodo({
+        ...defaults,
+        ...(p as Omit<Todo, 'created_at' | 'updated_at'>),
+      });
+      logger.debug({ id: p.id, sourceGroup }, 'IPC todo created');
+      return { ok: true };
+    }
+
+    case 'update_todo': {
+      const id = data.id;
+      if (!id || typeof id !== 'string') {
+        logger.warn({ sourceGroup }, 'update_todo: missing id');
+        return { ok: false, error: 'missing id' };
+      }
+      const payload = data.payload;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        logger.warn({ sourceGroup, id }, 'update_todo: missing or invalid payload');
+        return { ok: false, error: 'missing or invalid payload' };
+      }
+      updateTodo(id, payload as Partial<Omit<Todo, 'id' | 'created_at'>>);
+      logger.debug({ id, sourceGroup }, 'IPC todo updated');
+      return { ok: true };
+    }
+
+    default:
+      logger.warn({ type: data.type }, 'Unknown IPC todo type');
+      return { ok: false, error: `unknown type: ${String(data.type)}` };
   }
 }
