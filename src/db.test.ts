@@ -10,9 +10,11 @@ import {
   getAllRegisteredGroups,
   getMessagesSince,
   getNewMessages,
+  getSchoolTodosNeedingNotionCreate,
   getTaskById,
   getTodoById,
   getTodoByNotionId,
+  getTodosNeedingNotionUpdate,
   setRegisteredGroup,
   storeChatMetadata,
   storeMessage,
@@ -689,5 +691,60 @@ describe('cancelDeletedNotionTodos', () => {
 
     expect(count).toBe(0);
     expect(getTodoById('e1')!.status).toBe('todo');
+  });
+});
+
+describe('getSchoolTodosNeedingNotionCreate', () => {
+  it('returns school todos with no notion_id', () => {
+    createTodo(makeTodo({ id: 'school-1', category: 'school' }));
+    const todos = getSchoolTodosNeedingNotionCreate();
+    expect(todos).toHaveLength(1);
+    expect(todos[0].id).toBe('school-1');
+  });
+
+  it('excludes school todos that already have a notion_id', () => {
+    createTodo(makeTodo({ id: 'school-1', category: 'school', notion_id: 'n-1', notion_synced: 1 }));
+    expect(getSchoolTodosNeedingNotionCreate()).toHaveLength(0);
+  });
+
+  it('excludes cancelled school todos', () => {
+    createTodo(makeTodo({ id: 'school-1', category: 'school', status: 'cancelled' }));
+    expect(getSchoolTodosNeedingNotionCreate()).toHaveLength(0);
+  });
+
+  it('excludes non-school todos', () => {
+    createTodo(makeTodo({ id: 'personal-1', category: 'personal' }));
+    expect(getSchoolTodosNeedingNotionCreate()).toHaveLength(0);
+  });
+
+  it('returns multiple qualifying todos', () => {
+    createTodo(makeTodo({ id: 'school-1', category: 'school' }));
+    createTodo(makeTodo({ id: 'school-2', category: 'school' }));
+    createTodo(makeTodo({ id: 'personal-1', category: 'personal' }));
+    createTodo(makeTodo({ id: 'school-3', category: 'school', notion_id: 'n-3', notion_synced: 1 }));
+    const todos = getSchoolTodosNeedingNotionCreate();
+    expect(todos).toHaveLength(2);
+    const ids = todos.map((t) => t.id);
+    expect(ids).toContain('school-1');
+    expect(ids).toContain('school-2');
+  });
+});
+
+describe('getTodosNeedingNotionUpdate', () => {
+  it('returns todos with notion_id and notion_synced=0', () => {
+    createTodo(makeTodo({ id: 'a', notion_id: 'n-a', notion_synced: 0 }));
+    const todos = getTodosNeedingNotionUpdate();
+    expect(todos).toHaveLength(1);
+    expect(todos[0].id).toBe('a');
+  });
+
+  it('excludes todos with notion_synced=1', () => {
+    createTodo(makeTodo({ id: 'a', notion_id: 'n-a', notion_synced: 1 }));
+    expect(getTodosNeedingNotionUpdate()).toHaveLength(0);
+  });
+
+  it('excludes todos without notion_id', () => {
+    createTodo(makeTodo({ id: 'local', notion_synced: 0 }));
+    expect(getTodosNeedingNotionUpdate()).toHaveLength(0);
   });
 });

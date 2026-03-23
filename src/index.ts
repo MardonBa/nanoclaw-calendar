@@ -680,7 +680,7 @@ async function main(): Promise<void> {
       runIncrementalSync().catch((err) =>
         logger.error({ err }, 'Notion incremental sync failed'),
       ),
-    12 * 60 * 60 * 1000,
+    60 * 60 * 1000,
   );
   setInterval(
     () =>

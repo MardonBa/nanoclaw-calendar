@@ -8,6 +8,8 @@ import path from 'path';
 import {
   cancelDeletedNotionTodos,
   createTodo,
+  getSchoolTodosNeedingNotionCreate,
+  getTodosNeedingNotionUpdate,
   getTodoByNotionId,
   getRouterState,
   setRouterState,
@@ -85,7 +87,18 @@ function extractSelect(props: NotionProps, name: string): string | undefined {
   return prop.select.name || undefined;
 }
 
-// --- Status normalization ---
+// --- Status normalization (bidirectional) ---
+
+function localToNotionStatus(status: Todo['status']): string {
+  switch (status) {
+    case 'done':
+      return 'Completed';
+    case 'in_progress':
+      return 'In Progress';
+    default:
+      return 'Not Started';
+  }
+}
 
 function normalizeStatus(raw: string | undefined): Todo['status'] {
   switch (raw?.toLowerCase().trim()) {
@@ -174,6 +187,91 @@ async function fetchAllPages(
   return pages;
 }
 
+// --- Push local changes to Notion ---
+
+async function pushSchoolTodosToNotion(
+  client: Client,
+  databaseId: string,
+): Promise<void> {
+  const todos = getSchoolTodosNeedingNotionCreate();
+  if (todos.length === 0) return;
+
+  logger.info({ count: todos.length }, 'Pushing new school todos to Notion');
+  for (const todo of todos) {
+    try {
+      const page = await client.pages.create({
+        parent: { database_id: databaseId },
+        properties: {
+          [NOTION_PROPERTY_NAMES.title]: {
+            title: [{ text: { content: todo.title } }],
+          },
+          ...(todo.due_date
+            ? {
+                [NOTION_PROPERTY_NAMES.due_date]: {
+                  date: { start: todo.due_date },
+                },
+              }
+            : {}),
+          ...(todo.course
+            ? {
+                [NOTION_PROPERTY_NAMES.course]: {
+                  select: { name: todo.course },
+                },
+              }
+            : {}),
+          [NOTION_PROPERTY_NAMES.status]: {
+            select: { name: localToNotionStatus(todo.status) },
+          },
+        },
+      });
+      updateTodo(todo.id, { notion_id: page.id, notion_synced: 1 });
+      logger.debug({ todoId: todo.id, notionPageId: page.id }, 'Pushed todo to Notion');
+    } catch (err) {
+      logger.warn({ err, todoId: todo.id }, 'Failed to push todo to Notion');
+    }
+  }
+}
+
+async function pushStatusUpdatesToNotion(client: Client): Promise<void> {
+  const todos = getTodosNeedingNotionUpdate();
+  if (todos.length === 0) return;
+
+  logger.info({ count: todos.length }, 'Pushing todo updates to Notion');
+  for (const todo of todos) {
+    try {
+      await client.pages.update({
+        page_id: todo.notion_id!,
+        properties: {
+          [NOTION_PROPERTY_NAMES.title]: {
+            title: [{ text: { content: todo.title } }],
+          },
+          ...(todo.due_date
+            ? {
+                [NOTION_PROPERTY_NAMES.due_date]: {
+                  date: { start: todo.due_date },
+                },
+              }
+            : {}),
+          ...(todo.course
+            ? {
+                [NOTION_PROPERTY_NAMES.course]: {
+                  select: { name: todo.course },
+                },
+              }
+            : {}),
+          [NOTION_PROPERTY_NAMES.status]: {
+            select: { name: localToNotionStatus(todo.status) },
+          },
+        },
+      });
+      updateTodo(todo.id, { notion_synced: 1 });
+      logger.debug({ todoId: todo.id, notionId: todo.notion_id }, 'Pushed update to Notion');
+    } catch (err) {
+      logger.warn({ err, todoId: todo.id }, 'Failed to push update to Notion');
+    }
+  }
+}
+
 // --- Public API ---
 
 export async function runIncrementalSync(): Promise<void> {
@@ -187,6 +285,8 @@ export async function runIncrementalSync(): Promise<void> {
   }
 
   const client = new Client({ auth: config.token });
+  await pushSchoolTodosToNotion(client, config.databaseId);
+  await pushStatusUpdatesToNotion(client);
   const pages = await fetchAllPages(client, config.databaseId, {
     timestamp: 'last_edited_time',
     last_edited_time: { after: syncCursor },
@@ -216,6 +316,8 @@ export async function runFullSync(): Promise<void> {
 
   logger.info('Notion full sync starting');
   const client = new Client({ auth: config.token });
+  await pushSchoolTodosToNotion(client, config.databaseId);
+  await pushStatusUpdatesToNotion(client);
   const pages = await fetchAllPages(client, config.databaseId);
 
   const notionIds = new Set<string>();

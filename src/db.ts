@@ -811,6 +811,25 @@ export function getTodoByNotionId(notionId: string): Todo | undefined {
   return row ? rowToTodo(row) : undefined;
 }
 
+export function getSchoolTodosNeedingNotionCreate(): Todo[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM todos
+       WHERE category = 'school' AND notion_id IS NULL AND status != 'cancelled'`,
+    )
+    .all() as Record<string, unknown>[];
+  return rows.map(rowToTodo);
+}
+
+export function getTodosNeedingNotionUpdate(): Todo[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM todos WHERE notion_id IS NOT NULL AND notion_synced = 0`,
+    )
+    .all() as Record<string, unknown>[];
+  return rows.map(rowToTodo);
+}
+
 export function cancelDeletedNotionTodos(activeNotionIds: string[]): number {
   if (activeNotionIds.length === 0) return 0;
   const placeholders = activeNotionIds.map(() => '?').join(', ');

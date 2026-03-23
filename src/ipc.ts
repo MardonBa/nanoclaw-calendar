@@ -10,6 +10,7 @@ import {
   createTodo,
   deleteTask,
   getTaskById,
+  getTodoById,
   updateTask,
   updateTodo,
 } from './db.js';
@@ -578,7 +579,18 @@ export function processTodoIpc(
         );
         return { ok: false, error: 'missing or invalid payload' };
       }
-      updateTodo(id, payload as Partial<Omit<Todo, 'id' | 'created_at'>>);
+      const p = payload as Partial<Omit<Todo, 'id' | 'created_at'>>;
+      // If this todo has a notion_id and a Notion-mapped field is being changed,
+      // mark it as needing a push to Notion on the next sync.
+      const notionMappedFields: (keyof typeof p)[] = ['status', 'title', 'due_date', 'course'];
+      const touchesNotionField = notionMappedFields.some((f) => f in p);
+      if (touchesNotionField) {
+        const existing = getTodoById(id);
+        if (existing?.notion_id) {
+          p.notion_synced = 0;
+        }
+      }
+      updateTodo(id, p);
       logger.debug({ id, sourceGroup }, 'IPC todo updated');
       return { ok: true };
     }

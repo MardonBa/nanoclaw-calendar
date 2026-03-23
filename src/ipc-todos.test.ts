@@ -169,6 +169,49 @@ describe('processTodoIpc — update_todo', () => {
   });
 });
 
+// --- processTodoIpc: notion_synced reset on update ---
+
+describe('processTodoIpc — update_todo notion_synced reset', () => {
+  it('resets notion_synced to 0 when a mapped field changes on a synced todo', () => {
+    processTodoIpc(
+      makeCreateData({ notion_id: 'n-1', notion_synced: 1 }),
+      'main',
+      true,
+    );
+    processTodoIpc(
+      { type: 'update_todo', id: 'todo-1', payload: { status: 'done' } },
+      'main',
+      true,
+    );
+    expect(getTodoById('todo-1')!.notion_synced).toBe(0);
+  });
+
+  it('does not reset notion_synced when only non-mapped fields change', () => {
+    processTodoIpc(
+      makeCreateData({ notion_id: 'n-1', notion_synced: 1 }),
+      'main',
+      true,
+    );
+    processTodoIpc(
+      { type: 'update_todo', id: 'todo-1', payload: { notes: 'some note' } },
+      'main',
+      true,
+    );
+    expect(getTodoById('todo-1')!.notion_synced).toBe(1);
+  });
+
+  it('does not set notion_synced when todo has no notion_id', () => {
+    processTodoIpc(makeCreateData(), 'main', true); // notion_synced=0, no notion_id
+    processTodoIpc(
+      { type: 'update_todo', id: 'todo-1', payload: { status: 'done' } },
+      'main',
+      true,
+    );
+    // notion_synced stays 0 — there's no notion page to push to
+    expect(getTodoById('todo-1')!.notion_synced).toBe(0);
+  });
+});
+
 // --- processTodoIpc: unknown type ---
 
 describe('processTodoIpc — unknown type', () => {

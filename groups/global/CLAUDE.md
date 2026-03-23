@@ -94,35 +94,12 @@ Courses (update each semester): CS 2050, CS 1332, MATH 2550, PHYS 2211, ENGL 110
 
 Database ID: *(fill in from your Notion URL)*
 
-### Using the Notion MCP
-
-When Notion is configured, you have access to `mcp__notion__*` tools.
-Use them to create and update pages in your Assignments database:
-
-```
-# Create a new assignment page
-mcp__notion__API-post-page with {
-  "parent": { "database_id": "22a5aa6e92ba8006b846ed49fc2e2234" },
-  "properties": {
-    "Name": { "title": [{ "text": { "content": "HW 15.2" } }] },
-    "Due Date": { "date": { "start": "2026-03-30" } },
-    "Class": { "select": { "name": "MATH 2550" } },
-    "Status": { "select": { "name": "Not Started" } }
-  }
-}
-
-# Update assignment status to done
-mcp__notion__API-patch-page with page_id="...", properties={"Status": {"select": {"name": "Completed"}}}
-```
-
-Always check for an existing page with `mcp__notion__API-post-search` before creating to avoid duplicates.
-
 ### Rules
 
-- School assignments → write to Notion (MCP tool) AND create local todo via IPC
+- School assignments → create local todo via IPC (category='school'); the host syncs to Notion automatically every hour
 - Personal todos → IPC only, never Notion
-- Notion syncs every 12h automatically — treat Notion as source of truth for school items
-- When marking a school assignment done → update Notion page AND local todo status
+- Notion is source of truth for school items; local changes (status, title, due_date, course) are pushed to Notion on the next sync
+- When marking a school assignment done → update local todo status via IPC (Notion will be updated automatically)
 
 ### Reminders
 

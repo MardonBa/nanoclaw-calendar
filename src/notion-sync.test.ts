@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   _initTestDatabase,
   createTodo,
+  getTodoById,
   getTodoByNotionId,
   getRouterState,
   setRouterState,
@@ -13,11 +14,16 @@ import { runIncrementalSync, runFullSync } from './notion-sync.js';
 // vi.hoisted ensures mockQuery is defined before the vi.mock factory runs (which is hoisted)
 
 const mockQuery = vi.hoisted(() => vi.fn());
+const mockCreate = vi.hoisted(() => vi.fn());
+const mockUpdate = vi.hoisted(() => vi.fn());
 
 vi.mock('@notionhq/client', () => ({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   Client: function MockClient(_opts: unknown) {
-    return { databases: { query: mockQuery } };
+    return {
+      databases: { query: mockQuery },
+      pages: { create: mockCreate, update: mockUpdate },
+    };
   },
   isFullPage: vi.fn(
     (page: unknown) =>
@@ -34,11 +40,12 @@ vi.mock('fs', async () => {
     default: {
       ...actual,
       existsSync: vi.fn(() => true),
-      readFileSync: vi.fn((p: unknown) => {
+      readFileSync: vi.fn((p: unknown, options?: unknown) => {
         if (String(p).includes('notion.json')) {
           return JSON.stringify({ token: 'test-token', databaseId: 'db-1' });
         }
-        return actual.readFileSync(p as string);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (actual.readFileSync as any)(p, options);
       }),
     },
   };
@@ -93,6 +100,8 @@ function emptyResults() {
 beforeEach(() => {
   _initTestDatabase();
   mockQuery.mockReset();
+  mockCreate.mockReset();
+  mockUpdate.mockReset();
 });
 
 // --- runIncrementalSync ---
@@ -319,5 +328,234 @@ describe('runIncrementalSync / runFullSync with missing config', () => {
     expect(mockQuery).not.toHaveBeenCalled();
 
     vi.mocked(fsMock.existsSync).mockReturnValue(true);
+  });
+});
+
+// --- pushSchoolTodosToNotion ---
+
+describe('pushSchoolTodosToNotion (via runFullSync)', () => {
+  it('creates a Notion page for a school todo with no notion_id', async () => {
+    createTodo({
+      id: 'local-school',
+      title: 'HW 1',
+      status: 'todo',
+      flexible: 1,
+      priority: 'medium',
+      category: 'school',
+      notion_synced: 0,
+    });
+    mockCreate.mockResolvedValue({ id: 'new-page-id' });
+    mockQuery.mockResolvedValue(emptyResults());
+
+    await runFullSync();
+
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    const createArg = mockCreate.mock.calls[0][0];
+    expect(createArg.properties['Name'].title[0].text.content).toBe('HW 1');
+  });
+
+  it('stores the returned page id as notion_id on the local todo', async () => {
+    createTodo({
+      id: 'local-school',
+      title: 'HW 1',
+      status: 'todo',
+      flexible: 1,
+      priority: 'medium',
+      category: 'school',
+      notion_synced: 0,
+    });
+    mockCreate.mockResolvedValue({ id: 'new-page-id' });
+    mockQuery.mockResolvedValue(emptyResults());
+
+    await runFullSync();
+
+    const todo = getTodoById('local-school');
+    expect(todo!.notion_id).toBe('new-page-id');
+    expect(todo!.notion_synced).toBe(1);
+  });
+
+  it('does not create a page for a non-school todo', async () => {
+    createTodo({
+      id: 'personal-1',
+      title: 'Buy milk',
+      status: 'todo',
+      flexible: 1,
+      priority: 'medium',
+      category: 'personal',
+      notion_synced: 0,
+    });
+    mockQuery.mockResolvedValue(emptyResults());
+
+    await runFullSync();
+
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('does not create a page for a cancelled school todo', async () => {
+    createTodo({
+      id: 'cancelled-school',
+      title: 'Old HW',
+      status: 'cancelled',
+      flexible: 1,
+      priority: 'medium',
+      category: 'school',
+      notion_synced: 0,
+    });
+    mockQuery.mockResolvedValue(emptyResults());
+
+    await runFullSync();
+
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('continues past a failed create and processes the next todo', async () => {
+    createTodo({
+      id: 'fail-1',
+      title: 'Bad HW',
+      status: 'todo',
+      flexible: 1,
+      priority: 'medium',
+      category: 'school',
+      notion_synced: 0,
+    });
+    createTodo({
+      id: 'ok-2',
+      title: 'Good HW',
+      status: 'todo',
+      flexible: 1,
+      priority: 'medium',
+      category: 'school',
+      notion_synced: 0,
+    });
+    mockCreate
+      .mockRejectedValueOnce(new Error('API error'))
+      .mockResolvedValueOnce({ id: 'page-ok' });
+    mockQuery.mockResolvedValue(emptyResults());
+
+    await expect(runFullSync()).resolves.toBeUndefined();
+
+    expect(getTodoById('fail-1')!.notion_id).toBeUndefined();
+    expect(getTodoById('ok-2')!.notion_id).toBe('page-ok');
+  });
+});
+
+// --- pushStatusUpdatesToNotion ---
+
+describe('pushStatusUpdatesToNotion (via runFullSync)', () => {
+  it('pushes update for a todo with notion_id and notion_synced=0', async () => {
+    createTodo({
+      id: 'synced-1',
+      title: 'HW 5',
+      status: 'done',
+      flexible: 1,
+      priority: 'medium',
+      notion_id: 'page-5',
+      notion_synced: 0,
+    });
+    mockUpdate.mockResolvedValue({});
+    mockQuery.mockResolvedValue(emptyResults());
+
+    await runFullSync();
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    const updateArg = mockUpdate.mock.calls[0][0];
+    expect(updateArg.page_id).toBe('page-5');
+    expect(updateArg.properties['Status'].select.name).toBe('Completed');
+  });
+
+  it('sets notion_synced=1 after a successful update', async () => {
+    createTodo({
+      id: 'synced-1',
+      title: 'HW 5',
+      status: 'done',
+      flexible: 1,
+      priority: 'medium',
+      notion_id: 'page-5',
+      notion_synced: 0,
+    });
+    mockUpdate.mockResolvedValue({});
+    mockQuery.mockResolvedValue(emptyResults());
+
+    await runFullSync();
+
+    expect(getTodoById('synced-1')!.notion_synced).toBe(1);
+  });
+
+  it('does not push a todo with notion_synced=1', async () => {
+    createTodo({
+      id: 'synced-already',
+      title: 'HW 6',
+      status: 'todo',
+      flexible: 1,
+      priority: 'medium',
+      notion_id: 'page-6',
+      notion_synced: 1,
+    });
+    mockQuery.mockResolvedValue(emptyResults());
+
+    await runFullSync();
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('continues past a failed update', async () => {
+    createTodo({
+      id: 'fail-upd',
+      title: 'HW fail',
+      status: 'done',
+      flexible: 1,
+      priority: 'medium',
+      notion_id: 'page-fail',
+      notion_synced: 0,
+    });
+    createTodo({
+      id: 'ok-upd',
+      title: 'HW ok',
+      status: 'in_progress',
+      flexible: 1,
+      priority: 'medium',
+      notion_id: 'page-ok',
+      notion_synced: 0,
+    });
+    mockUpdate
+      .mockRejectedValueOnce(new Error('API error'))
+      .mockResolvedValueOnce({});
+    mockQuery.mockResolvedValue(emptyResults());
+
+    await expect(runFullSync()).resolves.toBeUndefined();
+
+    expect(getTodoById('fail-upd')!.notion_synced).toBe(0);
+    expect(getTodoById('ok-upd')!.notion_synced).toBe(1);
+  });
+});
+
+// --- push runs before pull ---
+
+describe('push runs before pull in runFullSync', () => {
+  it('calls pages.create before databases.query', async () => {
+    createTodo({
+      id: 'school-push',
+      title: 'Push first',
+      status: 'todo',
+      flexible: 1,
+      priority: 'medium',
+      category: 'school',
+      notion_synced: 0,
+    });
+
+    const callOrder: string[] = [];
+    mockCreate.mockImplementation(() => {
+      callOrder.push('create');
+      return Promise.resolve({ id: 'page-new' });
+    });
+    mockQuery.mockImplementation(() => {
+      callOrder.push('query');
+      return Promise.resolve(emptyResults());
+    });
+
+    await runFullSync();
+
+    expect(callOrder[0]).toBe('create');
+    expect(callOrder).toContain('query');
   });
 });
