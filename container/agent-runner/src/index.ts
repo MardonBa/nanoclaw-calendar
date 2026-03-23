@@ -34,6 +34,12 @@ interface ContainerOutput {
   result: string | null;
   newSessionId?: string;
   error?: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens: number;
+    cacheCreationInputTokens: number;
+  };
 }
 
 interface SessionEntry {
@@ -404,9 +410,7 @@ async function runQuery(
         'Read', 'Write', 'Edit', 'Glob', 'Grep',
         'WebSearch', 'WebFetch',
         'Task', 'TaskOutput', 'TaskStop',
-        'TeamCreate', 'TeamDelete', 'SendMessage',
-        'TodoWrite', 'ToolSearch', 'Skill',
-        'NotebookEdit',
+        'TodoWrite', 'Skill',
         'mcp__nanoclaw__*'
       ],
       env: sdkEnv,
@@ -450,11 +454,20 @@ async function runQuery(
     if (message.type === 'result') {
       resultCount++;
       const textResult = 'result' in message ? (message as { result?: string }).result : null;
-      log(`Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
+      const rawUsage = (message as any).usage;
+      log(`Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}${rawUsage ? ` in=${rawUsage.input_tokens} out=${rawUsage.output_tokens} cache_read=${rawUsage.cache_read_input_tokens}` : ''}`);
       writeOutput({
         status: 'success',
         result: textResult || null,
-        newSessionId
+        newSessionId,
+        usage: rawUsage
+          ? {
+              inputTokens: rawUsage.input_tokens ?? 0,
+              outputTokens: rawUsage.output_tokens ?? 0,
+              cacheReadInputTokens: rawUsage.cache_read_input_tokens ?? 0,
+              cacheCreationInputTokens: rawUsage.cache_creation_input_tokens ?? 0,
+            }
+          : undefined,
       });
     }
   }

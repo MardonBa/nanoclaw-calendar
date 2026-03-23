@@ -3,6 +3,7 @@ import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
 
 import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL, TIMEZONE } from './config.js';
+import { traceTurn, UsageTokens } from './langfuse-tracer.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -164,6 +165,12 @@ async function runTask(
 
   let result: string | null = null;
   let error: string | null = null;
+  const taskUsage: UsageTokens = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadInputTokens: 0,
+    cacheCreationInputTokens: 0,
+  };
 
   // For group context mode, use the group's current session
   const sessions = deps.getSessions();
@@ -199,6 +206,12 @@ async function runTask(
       (proc, containerName) =>
         deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
       async (streamedOutput: ContainerOutput) => {
+        if (streamedOutput.usage) {
+          taskUsage.inputTokens += streamedOutput.usage.inputTokens;
+          taskUsage.outputTokens += streamedOutput.usage.outputTokens;
+          taskUsage.cacheReadInputTokens += streamedOutput.usage.cacheReadInputTokens;
+          taskUsage.cacheCreationInputTokens += streamedOutput.usage.cacheCreationInputTokens;
+        }
         if (streamedOutput.result) {
           result = streamedOutput.result;
           // Forward result to user (sendMessage handles formatting)
@@ -252,6 +265,20 @@ async function runTask(
     result,
     error,
   });
+
+  const hasUsage = taskUsage.inputTokens > 0;
+  if (group) {
+    traceTurn({
+      groupName: group.name,
+      groupFolder: task.group_folder,
+      prompt: task.prompt,
+      result,
+      durationMs,
+      usage: hasUsage ? taskUsage : undefined,
+      isScheduledTask: true,
+      error: error ?? undefined,
+    });
+  }
 
   const nextRun = computeNextRun(task);
   const resultSummary = error

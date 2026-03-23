@@ -582,7 +582,12 @@ export function processTodoIpc(
       const p = payload as Partial<Omit<Todo, 'id' | 'created_at'>>;
       // If this todo has a notion_id and a Notion-mapped field is being changed,
       // mark it as needing a push to Notion on the next sync.
-      const notionMappedFields: (keyof typeof p)[] = ['status', 'title', 'due_date', 'course'];
+      const notionMappedFields: (keyof typeof p)[] = [
+        'status',
+        'title',
+        'due_date',
+        'course',
+      ];
       const touchesNotionField = notionMappedFields.some((f) => f in p);
       if (touchesNotionField) {
         const existing = getTodoById(id);

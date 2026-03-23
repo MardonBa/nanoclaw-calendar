@@ -123,17 +123,7 @@ echo '{"type": "refresh_groups"}' > /workspace/ipc/tasks/refresh_$(date +%s).jso
 
 Then wait a moment and re-read `available_groups.json`.
 
-**Fallback**: Query the SQLite database directly:
-
-```bash
-sqlite3 /workspace/project/store/messages.db "
-  SELECT jid, name, last_message_time
-  FROM chats
-  WHERE jid LIKE '%@g.us' AND jid != '__group_sync__'
-  ORDER BY last_message_time DESC
-  LIMIT 10;
-"
-```
+**Fallback**: Query the `chats` table directly in `/workspace/project/store/messages.db` (columns: `jid`, `name`, `last_message_time`).
 
 ### Registered Groups Config
 

@@ -703,12 +703,21 @@ describe('getSchoolTodosNeedingNotionCreate', () => {
   });
 
   it('excludes school todos that already have a notion_id', () => {
-    createTodo(makeTodo({ id: 'school-1', category: 'school', notion_id: 'n-1', notion_synced: 1 }));
+    createTodo(
+      makeTodo({
+        id: 'school-1',
+        category: 'school',
+        notion_id: 'n-1',
+        notion_synced: 1,
+      }),
+    );
     expect(getSchoolTodosNeedingNotionCreate()).toHaveLength(0);
   });
 
   it('excludes cancelled school todos', () => {
-    createTodo(makeTodo({ id: 'school-1', category: 'school', status: 'cancelled' }));
+    createTodo(
+      makeTodo({ id: 'school-1', category: 'school', status: 'cancelled' }),
+    );
     expect(getSchoolTodosNeedingNotionCreate()).toHaveLength(0);
   });
 
@@ -721,7 +730,14 @@ describe('getSchoolTodosNeedingNotionCreate', () => {
     createTodo(makeTodo({ id: 'school-1', category: 'school' }));
     createTodo(makeTodo({ id: 'school-2', category: 'school' }));
     createTodo(makeTodo({ id: 'personal-1', category: 'personal' }));
-    createTodo(makeTodo({ id: 'school-3', category: 'school', notion_id: 'n-3', notion_synced: 1 }));
+    createTodo(
+      makeTodo({
+        id: 'school-3',
+        category: 'school',
+        notion_id: 'n-3',
+        notion_synced: 1,
+      }),
+    );
     const todos = getSchoolTodosNeedingNotionCreate();
     expect(todos).toHaveLength(2);
     const ids = todos.map((t) => t.id);

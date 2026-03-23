@@ -225,7 +225,10 @@ async function pushSchoolTodosToNotion(
         },
       });
       updateTodo(todo.id, { notion_id: page.id, notion_synced: 1 });
-      logger.debug({ todoId: todo.id, notionPageId: page.id }, 'Pushed todo to Notion');
+      logger.debug(
+        { todoId: todo.id, notionPageId: page.id },
+        'Pushed todo to Notion',
+      );
     } catch (err) {
       logger.warn({ err, todoId: todo.id }, 'Failed to push todo to Notion');
     }
@@ -265,7 +268,10 @@ async function pushStatusUpdatesToNotion(client: Client): Promise<void> {
         },
       });
       updateTodo(todo.id, { notion_synced: 1 });
-      logger.debug({ todoId: todo.id, notionId: todo.notion_id }, 'Pushed update to Notion');
+      logger.debug(
+        { todoId: todo.id, notionId: todo.notion_id },
+        'Pushed update to Notion',
+      );
     } catch (err) {
       logger.warn({ err, todoId: todo.id }, 'Failed to push update to Notion');
     }

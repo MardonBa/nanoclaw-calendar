@@ -6,10 +6,14 @@ import {
   CREDENTIAL_PROXY_PORT,
   DATA_DIR,
   IDLE_TIMEOUT,
+  LANGFUSE_BASEURL,
+  LANGFUSE_PUBLIC_KEY,
+  LANGFUSE_SECRET_KEY,
   POLL_INTERVAL,
   TIMEZONE,
   TRIGGER_PATTERN,
 } from './config.js';
+import { initLangfuse, traceTurn, UsageTokens } from './langfuse-tracer.js';
 import { startCredentialProxy } from './credential-proxy.js';
 import './channels/index.js';
 import {
@@ -281,6 +285,14 @@ async function runAgent(
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
+  const agentStartTime = Date.now();
+  const accumulatedUsage: UsageTokens = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadInputTokens: 0,
+    cacheCreationInputTokens: 0,
+  };
+  let finalResult: string | null = null;
 
   // Update tasks snapshot for container to read (filtered by group)
   const tasks = getAllTasks();
@@ -307,13 +319,20 @@ async function runAgent(
     new Set(Object.keys(registeredGroups)),
   );
 
-  // Wrap onOutput to track session ID from streamed results
+  // Wrap onOutput to track session ID and accumulate usage from streamed results
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
         if (output.newSessionId) {
           sessions[group.folder] = output.newSessionId;
           setSession(group.folder, output.newSessionId);
         }
+        if (output.usage) {
+          accumulatedUsage.inputTokens += output.usage.inputTokens;
+          accumulatedUsage.outputTokens += output.usage.outputTokens;
+          accumulatedUsage.cacheReadInputTokens += output.usage.cacheReadInputTokens;
+          accumulatedUsage.cacheCreationInputTokens += output.usage.cacheCreationInputTokens;
+        }
+        if (output.result) finalResult = output.result;
         await onOutput(output);
       }
     : undefined;
@@ -339,17 +358,46 @@ async function runAgent(
       setSession(group.folder, output.newSessionId);
     }
 
+    const durationMs = Date.now() - agentStartTime;
+    const hasUsage = accumulatedUsage.inputTokens > 0;
+
     if (output.status === 'error') {
       logger.error(
         { group: group.name, error: output.error },
         'Container agent error',
       );
+      traceTurn({
+        groupName: group.name,
+        groupFolder: group.folder,
+        prompt,
+        result: null,
+        durationMs,
+        usage: hasUsage ? accumulatedUsage : undefined,
+        error: output.error,
+      });
       return 'error';
     }
+
+    traceTurn({
+      groupName: group.name,
+      groupFolder: group.folder,
+      prompt,
+      result: finalResult,
+      durationMs,
+      usage: hasUsage ? accumulatedUsage : undefined,
+    });
 
     return 'success';
   } catch (err) {
     logger.error({ group: group.name, err }, 'Agent error');
+    traceTurn({
+      groupName: group.name,
+      groupFolder: group.folder,
+      prompt,
+      result: null,
+      durationMs: Date.now() - agentStartTime,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return 'error';
   }
 }
@@ -483,6 +531,11 @@ async function main(): Promise<void> {
   initDatabase();
   logger.info('Database initialized');
   loadState();
+  initLangfuse({
+    publicKey: LANGFUSE_PUBLIC_KEY,
+    secretKey: LANGFUSE_SECRET_KEY,
+    baseUrl: LANGFUSE_BASEURL,
+  });
   restoreRemoteControl();
 
   // Start credential proxy (containers route API calls through this)
