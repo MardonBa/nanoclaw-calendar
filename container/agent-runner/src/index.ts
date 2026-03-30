@@ -27,6 +27,7 @@ interface ContainerInput {
   isMain: boolean;
   isScheduledTask?: boolean;
   assistantName?: string;
+  model?: string;
 }
 
 interface ContainerOutput {
@@ -399,6 +400,7 @@ async function runQuery(
     prompt: stream,
     options: {
       cwd: '/workspace/group',
+      model: containerInput.model,
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,
       resumeSessionAt: resumeAt,
@@ -410,7 +412,7 @@ async function runQuery(
         'Read', 'Write', 'Edit', 'Glob', 'Grep',
         'WebSearch', 'WebFetch',
         'Task', 'TaskOutput', 'TaskStop',
-        'TodoWrite', 'Skill',
+        'Skill',
         'mcp__nanoclaw__*'
       ],
       env: sdkEnv,

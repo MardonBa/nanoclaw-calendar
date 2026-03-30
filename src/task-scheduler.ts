@@ -2,7 +2,7 @@ import { ChildProcess } from 'child_process';
 import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
 
-import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL, TIMEZONE } from './config.js';
+import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL, SONNET_MODEL, TIMEZONE } from './config.js';
 import { traceTurn, UsageTokens } from './langfuse-tracer.js';
 import {
   ContainerOutput,
@@ -202,6 +202,7 @@ async function runTask(
         isMain,
         isScheduledTask: true,
         assistantName: ASSISTANT_NAME,
+        model: SONNET_MODEL,
       },
       (proc, containerName) =>
         deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
@@ -209,8 +210,10 @@ async function runTask(
         if (streamedOutput.usage) {
           taskUsage.inputTokens += streamedOutput.usage.inputTokens;
           taskUsage.outputTokens += streamedOutput.usage.outputTokens;
-          taskUsage.cacheReadInputTokens += streamedOutput.usage.cacheReadInputTokens;
-          taskUsage.cacheCreationInputTokens += streamedOutput.usage.cacheCreationInputTokens;
+          taskUsage.cacheReadInputTokens +=
+            streamedOutput.usage.cacheReadInputTokens;
+          taskUsage.cacheCreationInputTokens +=
+            streamedOutput.usage.cacheCreationInputTokens;
         }
         if (streamedOutput.result) {
           result = streamedOutput.result;
@@ -277,6 +280,7 @@ async function runTask(
       usage: hasUsage ? taskUsage : undefined,
       isScheduledTask: true,
       error: error ?? undefined,
+      model: SONNET_MODEL,
     });
   }
 

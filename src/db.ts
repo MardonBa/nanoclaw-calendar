@@ -388,6 +388,22 @@ export function getMessagesSince(
     .all(chatJid, sinceTimestamp, `${botPrefix}:%`, limit) as NewMessage[];
 }
 
+export function countMessagesSince(
+  chatJid: string,
+  sinceTimestamp: string,
+  botPrefix: string,
+): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) as count FROM messages
+       WHERE chat_jid = ? AND timestamp > ?
+         AND is_bot_message = 0 AND content NOT LIKE ?
+         AND content != '' AND content IS NOT NULL`,
+    )
+    .get(chatJid, sinceTimestamp, `${botPrefix}:%`) as { count: number };
+  return row.count;
+}
+
 export function createTask(
   task: Omit<ScheduledTask, 'last_run' | 'last_result'>,
 ): void {

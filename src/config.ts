@@ -78,10 +78,16 @@ export const TRIGGER_PATTERN = new RegExp(
 export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+// Model selection — Haiku for simple conversational turns, Sonnet for everything else
+export const HAIKU_MODEL = 'claude-haiku-4-5-20251001';
+export const SONNET_MODEL = 'claude-sonnet-4-6';
+
 // Langfuse observability — optional, disabled when LANGFUSE_SECRET_KEY is absent
 export const LANGFUSE_PUBLIC_KEY =
   process.env.LANGFUSE_PUBLIC_KEY || envConfig.LANGFUSE_PUBLIC_KEY || '';
 export const LANGFUSE_SECRET_KEY =
   process.env.LANGFUSE_SECRET_KEY || envConfig.LANGFUSE_SECRET_KEY || '';
 export const LANGFUSE_BASEURL =
-  process.env.LANGFUSE_BASEURL || envConfig.LANGFUSE_BASEURL || 'http://localhost:4000';
+  process.env.LANGFUSE_BASEURL ||
+  envConfig.LANGFUSE_BASEURL ||
+  'http://localhost:4000';

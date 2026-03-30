@@ -5,11 +5,13 @@ import {
   ASSISTANT_NAME,
   CREDENTIAL_PROXY_PORT,
   DATA_DIR,
+  HAIKU_MODEL,
   IDLE_TIMEOUT,
   LANGFUSE_BASEURL,
   LANGFUSE_PUBLIC_KEY,
   LANGFUSE_SECRET_KEY,
   POLL_INTERVAL,
+  SONNET_MODEL,
   TIMEZONE,
   TRIGGER_PATTERN,
 } from './config.js';
@@ -32,6 +34,7 @@ import {
   PROXY_BIND_HOST,
 } from './container-runtime.js';
 import {
+  countMessagesSince,
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
@@ -150,6 +153,41 @@ export function _setRegisteredGroups(
 }
 
 /**
+ * Select model based on message content. Defaults to Sonnet; uses Haiku only
+ * for single short conversational messages that require no tool use.
+ */
+function selectModel(isMain: boolean, messages: NewMessage[]): string {
+  if (isMain) return SONNET_MODEL;
+  if (messages.length !== 1) return SONNET_MODEL;
+  const text = messages[0].content.trim();
+  if (text.length > 120) return SONNET_MODEL;
+  if (/https?:\/\//.test(text)) return SONNET_MODEL;
+  const actionKeywords =
+    /add|create|remind|schedule|task|todo|find|search|look\s*up|browse|fetch|read|write|run|execute|register|manage|update|delete|cancel/i;
+  if (actionKeywords.test(text)) return SONNET_MODEL;
+  return HAIKU_MODEL;
+}
+
+/**
+ * Format messages as prompt, prepending a preamble if older messages were trimmed.
+ */
+function buildPromptWithPreamble(
+  messages: NewMessage[],
+  totalAvailable: number,
+  timezone: string,
+): string {
+  const base = formatMessages(messages, timezone);
+  if (messages.length < totalAvailable) {
+    const skipped = totalAvailable - messages.length;
+    const preamble =
+      `[Note: ${skipped} older message(s) omitted. Only the ${messages.length} most recent are shown. ` +
+      `See context-summary.md in your workspace for earlier context.]\n\n`;
+    return preamble + base;
+  }
+  return base;
+}
+
+/**
  * Process all pending messages for a group.
  * Called by the GroupQueue when it's this group's turn.
  */
@@ -166,10 +204,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const isMainGroup = group.isMain === true;
 
   const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
+  const totalAvailable = countMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
   const missedMessages = getMessagesSince(
     chatJid,
     sinceTimestamp,
     ASSISTANT_NAME,
+    20,
   );
 
   if (missedMessages.length === 0) return true;
@@ -185,7 +225,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     if (!hasTrigger) return true;
   }
 
-  const prompt = formatMessages(missedMessages, TIMEZONE);
+  const model = selectModel(isMainGroup, missedMessages);
+  const prompt = buildPromptWithPreamble(missedMessages, totalAvailable, TIMEZONE);
 
   // Advance cursor so the piping path in startMessageLoop won't re-fetch
   // these messages. Save the old cursor so we can roll back on error.
@@ -217,7 +258,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   let hadError = false;
   let outputSentToUser = false;
 
-  const output = await runAgent(group, prompt, chatJid, async (result) => {
+  const output = await runAgent(group, prompt, chatJid, model, async (result) => {
     // Streaming output callback — called for each agent result
     if (result.result) {
       const raw =
@@ -281,6 +322,7 @@ async function runAgent(
   group: RegisteredGroup,
   prompt: string,
   chatJid: string,
+  model: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
@@ -329,8 +371,10 @@ async function runAgent(
         if (output.usage) {
           accumulatedUsage.inputTokens += output.usage.inputTokens;
           accumulatedUsage.outputTokens += output.usage.outputTokens;
-          accumulatedUsage.cacheReadInputTokens += output.usage.cacheReadInputTokens;
-          accumulatedUsage.cacheCreationInputTokens += output.usage.cacheCreationInputTokens;
+          accumulatedUsage.cacheReadInputTokens +=
+            output.usage.cacheReadInputTokens;
+          accumulatedUsage.cacheCreationInputTokens +=
+            output.usage.cacheCreationInputTokens;
         }
         if (output.result) finalResult = output.result;
         await onOutput(output);
@@ -347,6 +391,7 @@ async function runAgent(
         chatJid,
         isMain,
         assistantName: ASSISTANT_NAME,
+        model,
       },
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),
@@ -374,6 +419,7 @@ async function runAgent(
         durationMs,
         usage: hasUsage ? accumulatedUsage : undefined,
         error: output.error,
+        model,
       });
       return 'error';
     }
@@ -385,6 +431,7 @@ async function runAgent(
       result: finalResult,
       durationMs,
       usage: hasUsage ? accumulatedUsage : undefined,
+      model,
     });
 
     return 'success';
@@ -397,6 +444,7 @@ async function runAgent(
       result: null,
       durationMs: Date.now() - agentStartTime,
       error: err instanceof Error ? err.message : String(err),
+      model,
     });
     return 'error';
   }
@@ -471,10 +519,22 @@ async function startMessageLoop(): Promise<void> {
             chatJid,
             lastAgentTimestamp[chatJid] || '',
             ASSISTANT_NAME,
+            20,
+          );
+          const totalPending = countMessagesSince(
+            chatJid,
+            lastAgentTimestamp[chatJid] || '',
+            ASSISTANT_NAME,
           );
           const messagesToSend =
             allPending.length > 0 ? allPending : groupMessages;
-          const formatted = formatMessages(messagesToSend, TIMEZONE);
+          const totalToSend =
+            allPending.length > 0 ? totalPending : groupMessages.length;
+          const formatted = buildPromptWithPreamble(
+            messagesToSend,
+            totalToSend,
+            TIMEZONE,
+          );
 
           if (queue.sendMessage(chatJid, formatted)) {
             logger.debug(

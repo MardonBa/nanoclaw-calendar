@@ -47,6 +47,10 @@ When you learn something important:
 - Split files larger than 500 lines into folders
 - Keep an index in your memory for the files you create
 
+### Context continuity
+
+Maintain a rolling `context-summary.md` in `/workspace/group/`. After each session, update it with key facts: decisions made, preferences stated, ongoing tasks. When you see a `[Note: N older messages omitted]` preamble, read this file before responding.
+
 ## Message Formatting
 
 Format messages based on the channel you're responding to. Check your group folder name:

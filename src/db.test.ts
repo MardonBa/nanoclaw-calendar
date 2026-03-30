@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   _initTestDatabase,
   cancelDeletedNotionTodos,
+  countMessagesSince,
   createTask,
   createTodo,
   deleteTask,
@@ -432,6 +433,17 @@ describe('message query LIMIT', () => {
     expect(messages[1].timestamp > messages[0].timestamp).toBe(true);
     // newTimestamp reflects latest returned row
     expect(newTimestamp).toBe('2024-01-01T00:00:10.000Z');
+  });
+
+  it('countMessagesSince returns total count excluding bot messages', () => {
+    // The beforeEach for this describe block stores 10 user messages (no bots)
+    const count = countMessagesSince('group@g.us', '2024-01-01T00:00:00.000Z', 'Andy');
+    expect(count).toBe(10);
+  });
+
+  it('countMessagesSince returns 0 when no messages match', () => {
+    const count = countMessagesSince('group@g.us', '2099-01-01T00:00:00.000Z', 'Andy');
+    expect(count).toBe(0);
   });
 
   it('getMessagesSince caps to limit and returns most recent in chronological order', () => {

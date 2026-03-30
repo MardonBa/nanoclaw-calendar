@@ -43,6 +43,7 @@ export function traceTurn(opts: {
   usage?: UsageTokens;
   isScheduledTask?: boolean;
   error?: string;
+  model?: string;
 }): void {
   if (!client) return;
   try {
@@ -54,7 +55,7 @@ export function traceTurn(opts: {
     });
     trace.generation({
       name: 'agent-turn',
-      model: 'claude-sonnet-4-6',
+      model: opts.model ?? 'claude-sonnet-4-6',
       input: opts.prompt,
       output: opts.result ?? opts.error ?? '',
       startTime,
